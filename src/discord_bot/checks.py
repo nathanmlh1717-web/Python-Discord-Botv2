@@ -14,6 +14,14 @@ class GuildCommandsDisabledError(app_commands.CheckFailure):
     """Raised when a server's bot commands are disabled."""
 
 
+class GuildMaintenanceModeError(app_commands.CheckFailure):
+    """Raised when normal commands are temporarily restricted in a server."""
+
+
+class FeatureDisabledError(app_commands.CheckFailure):
+    """Raised when a bot feature or individual command is disabled in a server."""
+
+
 def owner_only():
     async def predicate(interaction: discord.Interaction) -> bool:
         owner_id = getattr(interaction.client, "owner_id", None)

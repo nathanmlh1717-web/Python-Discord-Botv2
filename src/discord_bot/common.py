@@ -14,6 +14,34 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger("discord_bot")
 MENTIONS_NONE = discord.AllowedMentions.none()
+COMMAND_FEATURES = {
+    "ban": "moderation",
+    "kick": "moderation",
+    "timeout": "moderation",
+    "untimeout": "moderation",
+    "warn": "moderation",
+    "warnings": "moderation",
+    "clear": "moderation",
+    "slowmode": "moderation",
+    "lock": "moderation",
+    "unlock": "moderation",
+    "userinfo": "information",
+    "serverinfo": "information",
+    "avatar": "information",
+    "botinfo": "information",
+    "ping": "information",
+    "help": "information",
+    "say": "utilities",
+    "embed": "utilities",
+    "poll": "utilities",
+    "announce": "utilities",
+    "suggest": "suggestions",
+    "report": "utilities",
+    "logsetup": "logs",
+    "ticketsetup": "tickets",
+    "stafflist": "tickets",
+    "verifysetup": "verification",
+}
 UNSAFE_VERIFICATION_PERMISSIONS = (
     "administrator",
     "manage_guild",
@@ -30,6 +58,14 @@ UNSAFE_VERIFICATION_PERMISSIONS = (
     "mention_everyone",
     "view_audit_log",
 )
+
+
+def feature_is_enabled(config: dict[str, object], feature: str) -> bool:
+    features = config.get("features", {})
+    if not isinstance(features, dict):
+        return feature != "welcome"
+    value = features.get(feature, feature != "welcome")
+    return value is not False
 
 
 def target_hierarchy_error(
@@ -60,9 +96,25 @@ async def log_action(
     description: str,
     *,
     color: discord.Color = discord.Color.orange(),
+    category: str = "moderation",
+    event_kind: str | None = None,
+    actor_id: int | None = None,
+    target_id: int | None = None,
 ) -> bool:
     """Send a moderation or ticket event to the configured log channel."""
     config = await bot.config_store.get_guild(guild.id)
+    await bot.activity_store.record_event(
+        guild.id,
+        event_kind or category,
+        title,
+        actor_id=actor_id,
+        target_id=target_id,
+        detail=description,
+    )
+    categories = config.get("log_categories", {})
+    category_enabled = not isinstance(categories, dict) or categories.get(category) is not False
+    if not feature_is_enabled(config, "logs") or not category_enabled:
+        return False
     channel_id = config.get("log_channel_id")
     if not channel_id:
         LOGGER.info("Aucun salon de logs configuré pour le serveur %s.", guild.id)
