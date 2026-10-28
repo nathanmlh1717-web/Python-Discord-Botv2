@@ -14,6 +14,22 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger("discord_bot")
 MENTIONS_NONE = discord.AllowedMentions.none()
+UNSAFE_VERIFICATION_PERMISSIONS = (
+    "administrator",
+    "manage_guild",
+    "manage_roles",
+    "manage_channels",
+    "manage_messages",
+    "manage_webhooks",
+    "manage_emojis_and_stickers",
+    "manage_events",
+    "manage_threads",
+    "ban_members",
+    "kick_members",
+    "moderate_members",
+    "mention_everyone",
+    "view_audit_log",
+)
 
 
 def target_hierarchy_error(
@@ -90,6 +106,17 @@ def normalize_reason(reason: str) -> str | None:
     if not cleaned or len(cleaned) > 500:
         return None
     return cleaned
+
+
+def verification_role_error(
+    role: discord.Role,
+    bot_member: discord.Member,
+) -> str | None:
+    if role.is_default() or role.managed or role >= bot_member.top_role:
+        return "Le rôle doit être attribuable et inférieur au rôle le plus élevé du bot."
+    if any(getattr(role.permissions, permission) for permission in UNSAFE_VERIFICATION_PERMISSIONS):
+        return "Ce rôle possède des permissions sensibles et ne peut pas être attribué par la vérification."
+    return None
 
 
 def format_member(member: discord.Member) -> str:

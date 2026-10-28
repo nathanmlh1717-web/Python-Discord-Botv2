@@ -6,7 +6,7 @@ Bot modulaire construit avec `discord.py`. Il comprend des commandes de modérat
 
 1. Créez l'application et le bot dans le [portail développeur Discord](https://discord.com/developers/applications).
 2. Invitez-le sur le serveur avec les scopes OAuth2 `bot` et `applications.commands`.
-3. Ajoutez le jeton comme Secret Replit nommé `DISCORD_TOKEN`. Ne le placez jamais dans le code ou dans un fichier `.env` suivi par Git.
+3. Ajoutez le jeton comme Secret Replit nommé `DISCORD_TOKEN` et votre identifiant utilisateur Discord comme Secret `OWNER_ID`. Ne placez jamais ces valeurs dans le code.
 4. Démarrez le workflow **Discord Bot**. Il exécute `uv run discord-bot`.
 5. Dans Discord, utilisez `/logsetup` pour choisir le salon des journaux.
 6. Utilisez `/ticketsetup` avec le rôle staff et `/verifysetup` avec le rôle non sensible à attribuer.
@@ -25,5 +25,10 @@ Le bot n'active pas l'intent privilégié « Message Content ». Les messages en
 - **Informations** : `/userinfo`, `/serverinfo`, `/avatar`, `/botinfo`, `/ping`, `/help`
 - **Utilitaires** : `/say`, `/embed`, `/poll`, `/announce`, `/suggest`, `/report`
 - **Staff et configuration** : `/stafflist`, `/logsetup`, `/ticketsetup`, `/verifysetup`
+- **Propriétaire du bot** : `/owner-servers`, `/owner-serverinfo`, `/owner-send`, `/owner-config`, `/owner-leave`, `/owner-disable`, `/owner-enable`
 
 Les commandes sensibles vérifient les permissions Discord et la hiérarchie des rôles. Les erreurs affichées par le bot sont en français.
+
+Toutes les commandes `/owner-*` vérifient côté serveur que l'identifiant de l'utilisateur est exactement celui de `OWNER_ID`; elles ne sont pas autorisées sur la seule base de leur visibilité ou des permissions de serveur. `/owner-config` ne modifie que les réglages allowlistés du bot. `/owner-disable` bloque les commandes ordinaires du bot sur le serveur, tandis que les commandes du propriétaire restent disponibles pour l'administration.
+
+`/owner-config` permet de gérer les salons de logs, suggestions et bienvenue, la catégorie et le rôle staff des tickets ainsi que le rôle de vérification. Le réglage du salon de suggestions est utilisé par `/suggest`. Le bot actuel ne publie pas encore de message automatique à l'arrivée d'un membre.

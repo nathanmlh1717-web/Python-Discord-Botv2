@@ -47,12 +47,25 @@ class GuildConfigStore(JsonStore):
         async with self._lock:
             return dict(self.data.get(str(guild_id), {}))
 
-    async def set_guild_values(self, guild_id: int, **values: int) -> dict[str, Any]:
+    async def set_guild_values(self, guild_id: int, **values: Any) -> dict[str, Any]:
         async with self._lock:
             key = str(guild_id)
             current = dict(self.data.get(key, {}))
             current.update(values)
             self.data[key] = current
+            await self._save()
+            return dict(current)
+
+    async def remove_guild_values(self, guild_id: int, *keys: str) -> dict[str, Any]:
+        async with self._lock:
+            key = str(guild_id)
+            current = dict(self.data.get(key, {}))
+            for name in keys:
+                current.pop(name, None)
+            if current:
+                self.data[key] = current
+            else:
+                self.data.pop(key, None)
             await self._save()
             return dict(current)
 

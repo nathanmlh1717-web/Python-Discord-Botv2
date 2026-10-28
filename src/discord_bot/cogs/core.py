@@ -47,5 +47,14 @@ class CoreCog(commands.Cog):
         )
         for name, value in sections:
             embed.add_field(name=name, value=value, inline=False)
+        if interaction.user.id == self.bot.owner_id:
+            embed.add_field(
+                name="Propriétaire du bot",
+                value=(
+                    "/owner-servers · /owner-serverinfo · /owner-send · /owner-config\n"
+                    "/owner-leave · /owner-disable · /owner-enable"
+                ),
+                inline=False,
+            )
         embed.set_footer(text="Utilisez /help pour retrouver cette liste.")
         await interaction.response.send_message(embed=embed, ephemeral=True)

@@ -6,6 +6,7 @@ A Python Discord bot with `/ping` and `/help` slash commands, powered by `discor
 
 - `uv run discord-bot` — run the bot
 - `DISCORD_TOKEN` — required Replit Secret; never commit the token
+- `OWNER_ID` — required Replit Secret containing the bot owner's numeric Discord user ID
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
@@ -46,6 +47,8 @@ The bot provides French slash commands for moderation, server information, polls
 - Invite the bot with both the `bot` and `applications.commands` OAuth2 scopes.
 - Global slash-command changes may take time to appear in Discord after syncing.
 - Configure the log destination with `/logsetup`, the staff role with `/ticketsetup`, and the verification role with `/verifysetup`.
+- All `/owner-*` commands enforce an exact server-side `interaction.user.id == OWNER_ID` check. `/owner-config` only changes allowlisted bot feature settings; `/owner-disable` blocks normal commands while preserving the owner's control commands.
+- `/owner-config` supports a welcome-channel setting, but the bot does not yet send automatic new-member welcome messages.
 - Warning records and guild settings are stored in local JSON files under `data/`.
 
 ## Pointers

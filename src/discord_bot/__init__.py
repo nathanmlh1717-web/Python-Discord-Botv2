@@ -11,10 +11,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from discord_bot.checks import GuildCommandsDisabledError, OwnerOnlyCheckFailure
 from discord_bot.cogs.core import CoreCog
 from discord_bot.cogs.information import InformationCog
 from discord_bot.cogs.logging import LoggingCog
 from discord_bot.cogs.moderation import ModerationCog
+from discord_bot.cogs.owner import OwnerCog
 from discord_bot.cogs.setup import SetupCog
 from discord_bot.cogs.utilities import UtilitiesCog
 from discord_bot.storage import GuildConfigStore, WarningStore
@@ -23,14 +25,30 @@ from discord_bot.views import TicketCloseView, TicketPanelView, VerifyView
 LOGGER = logging.getLogger("discord_bot")
 
 
+class OwnerAwareCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if guild is None:
+            return True
+        bot = self.client
+        config = await bot.config_store.get_guild(guild.id)
+        command = interaction.command
+        is_owner_command = command is not None and command.name.startswith("owner-")
+        if config.get("commands_disabled") and not is_owner_command:
+            raise GuildCommandsDisabledError
+        return True
+
+
 class SlashCommandBot(commands.Bot):
     """Bot that loads its features and restores persistent component views."""
 
-    def __init__(self) -> None:
+    def __init__(self, owner_id: int) -> None:
         super().__init__(
             command_prefix=commands.when_mentioned,
             intents=discord.Intents.default(),
+            tree_cls=OwnerAwareCommandTree,
         )
+        self.owner_id = owner_id
         self.config_store = GuildConfigStore()
         self.warning_store = WarningStore()
         self.started_at = datetime.now(UTC)
@@ -46,6 +64,7 @@ class SlashCommandBot(commands.Bot):
             UtilitiesCog(self),
             SetupCog(self),
             LoggingCog(self),
+            OwnerCog(self),
         ):
             await self.add_cog(cog)
 
@@ -69,7 +88,11 @@ class SlashCommandBot(commands.Bot):
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
+        if isinstance(error, OwnerOnlyCheckFailure):
+            message = "Cette commande est réservée au propriétaire configuré du bot."
+        elif isinstance(error, GuildCommandsDisabledError):
+            message = "Les commandes du bot sont désactivées sur ce serveur."
+        elif isinstance(error, app_commands.MissingPermissions):
             message = "Vous n'avez pas les permissions Discord nécessaires pour cette commande."
         elif isinstance(error, app_commands.BotMissingPermissions):
             message = "Le bot n'a pas les permissions Discord nécessaires pour effectuer cette action."
@@ -103,8 +126,8 @@ class SlashCommandBot(commands.Bot):
             LOGGER.debug("Impossible d'envoyer le message d'erreur de commande.")
 
 
-async def _run_bot(token: str) -> None:
-    bot = SlashCommandBot()
+async def _run_bot(token: str, owner_id: int) -> None:
+    bot = SlashCommandBot(owner_id)
     async with bot:
         await bot.start(token)
 
@@ -120,4 +143,12 @@ def main() -> None:
         raise SystemExit(
             "DISCORD_TOKEN n'est pas défini. Ajoutez-le aux Secrets Replit avant de démarrer le bot."
         )
-    asyncio.run(_run_bot(token))
+    owner_value = os.getenv("OWNER_ID", "").strip()
+    if not owner_value.isascii() or not owner_value.isdecimal() or len(owner_value) > 20:
+        raise SystemExit(
+            "OWNER_ID doit contenir l'identifiant numérique de l'utilisateur Discord propriétaire."
+        )
+    owner_id = int(owner_value)
+    if owner_id <= 0:
+        raise SystemExit("OWNER_ID doit être un identifiant Discord valide.")
+    asyncio.run(_run_bot(token, owner_id))

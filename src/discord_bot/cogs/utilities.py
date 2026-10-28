@@ -186,15 +186,10 @@ class UtilitiesCog(commands.Cog):
 
     @app_commands.command(name="suggest", description="Publier une suggestion à voter.")
     @app_commands.describe(suggestion="Suggestion à soumettre à la communauté")
-    @app_commands.checks.bot_has_permissions(
-        send_messages=True,
-        embed_links=True,
-        add_reactions=True,
-    )
     async def suggest(self, interaction: discord.Interaction, suggestion: str) -> None:
         guild = interaction.guild
-        channel = interaction.channel
-        if guild is None or not isinstance(channel, (discord.TextChannel, discord.Thread)):
+        current_channel = interaction.channel
+        if guild is None or not isinstance(current_channel, (discord.TextChannel, discord.Thread)):
             await interaction.response.send_message(
                 "Cette commande doit être utilisée dans un serveur.",
                 ephemeral=True,
@@ -206,6 +201,43 @@ class UtilitiesCog(commands.Cog):
                 ephemeral=True,
             )
             return
+        config = await self.bot.config_store.get_guild(guild.id)
+        configured_channel_id = config.get("suggestion_channel_id")
+        destination = (
+            guild.get_channel(int(configured_channel_id))
+            if configured_channel_id
+            else current_channel
+        )
+        if not isinstance(destination, (discord.TextChannel, discord.Thread)):
+            await interaction.response.send_message(
+                "Le salon de suggestions configuré n'existe plus. Corrigez-le avec `/owner-config`.",
+                ephemeral=True,
+            )
+            return
+        bot_member = guild.me
+        if bot_member is None:
+            await interaction.response.send_message(
+                "Impossible de vérifier les permissions du bot.",
+                ephemeral=True,
+            )
+            return
+        permissions = destination.permissions_for(bot_member)
+        can_send = (
+            permissions.send_messages_in_threads
+            if isinstance(destination, discord.Thread)
+            else permissions.send_messages
+        )
+        if (
+            not permissions.view_channel
+            or not can_send
+            or not permissions.embed_links
+            or not permissions.add_reactions
+        ):
+            await interaction.response.send_message(
+                "Le bot doit pouvoir voir ce salon, y envoyer des messages, intégrer des liens et ajouter des réactions.",
+                ephemeral=True,
+            )
+            return
         embed = discord.Embed(
             title="Nouvelle suggestion",
             description=suggestion,
@@ -213,12 +245,16 @@ class UtilitiesCog(commands.Cog):
         )
         embed.set_footer(text=f"Proposée par {interaction.user.display_name}")
         await interaction.response.defer(ephemeral=True, thinking=True)
-        message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        message = await destination.send(
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
         await message.add_reaction("👍")
         await message.add_reaction("👎")
         await interaction.followup.send(
-            "Votre suggestion a été publiée et peut maintenant être votée.",
+            f"Votre suggestion a été publiée dans {destination.mention} et peut maintenant être votée.",
             ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
         )
 
     @app_commands.command(name="report", description="Signaler un membre à l'équipe du serveur.")

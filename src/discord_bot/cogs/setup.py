@@ -6,29 +6,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from discord_bot.common import log_action
+from discord_bot.common import log_action, verification_role_error
 from discord_bot.views import TicketPanelView, VerifyView
 
 if TYPE_CHECKING:
     from discord_bot import SlashCommandBot
-
-UNSAFE_VERIFICATION_PERMISSIONS = (
-    "administrator",
-    "manage_guild",
-    "manage_roles",
-    "manage_channels",
-    "manage_messages",
-    "manage_webhooks",
-    "manage_emojis_and_stickers",
-    "manage_events",
-    "manage_threads",
-    "ban_members",
-    "kick_members",
-    "moderate_members",
-    "mention_everyone",
-    "view_audit_log",
-)
-
 
 class SetupCog(commands.Cog):
     def __init__(self, bot: SlashCommandBot) -> None:
@@ -204,15 +186,10 @@ class SetupCog(commands.Cog):
                 ephemeral=True,
             )
             return
-        if role.is_default() or role.managed or role >= bot_member.top_role:
+        role_error = verification_role_error(role, bot_member)
+        if role_error:
             await interaction.response.send_message(
-                "Choisissez un rôle attribuable et inférieur au rôle le plus élevé du bot.",
-                ephemeral=True,
-            )
-            return
-        if any(getattr(role.permissions, permission) for permission in UNSAFE_VERIFICATION_PERMISSIONS):
-            await interaction.response.send_message(
-                "Ce rôle possède des permissions sensibles. Utilisez un rôle de vérification sans permissions de modération ou d'administration.",
+                role_error,
                 ephemeral=True,
             )
             return
