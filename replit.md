@@ -1,18 +1,20 @@
-# [Project name]
+# Discord Slash-Command Bot
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A Python Discord bot with `/ping` and `/help` slash commands, powered by `discord.py`.
 
 ## Run & Operate
 
+- `uv run discord-bot` — run the bot
+- `DISCORD_TOKEN` — required Replit Secret; never commit the token
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
 
 ## Stack
 
+- Python 3.13, `discord.py`
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
@@ -22,23 +24,27 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `src/discord_bot/` — bot startup and slash-command implementation
+- `pyproject.toml` / `uv.lock` — Python dependency and runtime configuration
+- `README.md` — Discord application setup and bot instructions
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Slash commands are synced globally when the bot starts.
+- Message-content intent is not enabled; commands use Discord interactions only.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The bot responds to `/ping` with gateway latency and provides a private `/help` command list.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep the Discord bot token in the `DISCORD_TOKEN` environment variable, never in source code.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Invite the bot with both the `bot` and `applications.commands` OAuth2 scopes.
+- Global slash-command changes may take time to appear in Discord after syncing.
 
 ## Pointers
 
