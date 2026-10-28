@@ -35,7 +35,7 @@ A Python Discord bot with `/ping` and `/help` slash commands, powered by `discor
 
 ## Product
 
-The bot responds to `/ping` with gateway latency and provides a private `/help` command list.
+The bot provides French slash commands for moderation, server information, polls, announcements, reports, private tickets, verification panels, and event logs. `/ping` and `/help` remain available.
 
 ## User preferences
 
@@ -45,6 +45,8 @@ The bot responds to `/ping` with gateway latency and provides a private `/help` 
 
 - Invite the bot with both the `bot` and `applications.commands` OAuth2 scopes.
 - Global slash-command changes may take time to appear in Discord after syncing.
+- Configure the log destination with `/logsetup`, the staff role with `/ticketsetup`, and the verification role with `/verifysetup`.
+- Warning records and guild settings are stored in local JSON files under `data/`.
 
 ## Pointers
 

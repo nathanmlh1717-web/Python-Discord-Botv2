@@ -25,6 +25,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+data/*.json
 
 # IDEs and editors
 /.idea
