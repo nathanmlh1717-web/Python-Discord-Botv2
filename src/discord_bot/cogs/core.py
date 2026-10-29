@@ -50,10 +50,7 @@ class CoreCog(commands.Cog):
         if interaction.user.id == self.bot.owner_id:
             embed.add_field(
                 name="Propriétaire du bot",
-                value=(
-                    "/owner-servers · /owner-serverinfo · /owner-send · /owner-config\n"
-                    "/owner-leave · /owner-disable · /owner-enable"
-                ),
+                value="/owner · centre de contrôle privé du bot",
                 inline=False,
             )
         embed.set_footer(text="Utilisez /help pour retrouver cette liste.")

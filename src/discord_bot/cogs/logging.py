@@ -26,6 +26,9 @@ class LoggingCog(commands.Cog):
             f"Auteur : {message.author.mention} (`{message.author.id}`)\n"
             f"Salon : {message.channel.mention}\nID du message : `{message.id}`",
             color=discord.Color.orange(),
+            category="messages",
+            event_kind="message",
+            actor_id=message.author.id,
         )
 
     @commands.Cog.listener()
@@ -43,4 +46,6 @@ class LoggingCog(commands.Cog):
             f"Salon : {getattr(channel, 'mention', 'inconnu')}\n"
             f"Nombre supprimé : **{len(messages)}**",
             color=discord.Color.orange(),
+            category="messages",
+            event_kind="message",
         )

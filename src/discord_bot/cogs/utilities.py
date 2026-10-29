@@ -210,7 +210,7 @@ class UtilitiesCog(commands.Cog):
         )
         if not isinstance(destination, (discord.TextChannel, discord.Thread)):
             await interaction.response.send_message(
-                "Le salon de suggestions configuré n'existe plus. Corrigez-le avec `/owner-config`.",
+                "Le salon de suggestions configuré n'existe plus. Corrigez-le depuis `/owner` → Fonctionnalités.",
                 ephemeral=True,
             )
             return

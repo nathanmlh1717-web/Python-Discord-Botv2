@@ -155,6 +155,9 @@ class SetupCog(commands.Cog):
             "Panneau de tickets installé",
             f"Salon : {channel.mention}\nRôle du staff : {staff_role.mention}",
             color=discord.Color.blurple(),
+            category="tickets",
+            event_kind="tickets",
+            actor_id=interaction.user.id,
         )
         await interaction.followup.send(
             f"Panneau de tickets publié dans {channel.mention}. Catégorie privée : {category.mention}.",

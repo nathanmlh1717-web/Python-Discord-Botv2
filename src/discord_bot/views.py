@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from discord_bot.common import log_action
+from discord_bot.common import feature_is_enabled, log_action
 
 if TYPE_CHECKING:
     from discord_bot import SlashCommandBot
@@ -48,6 +48,16 @@ class TicketPanelView(discord.ui.View):
 
         bot = get_bot(interaction)
         config = await bot.config_store.get_guild(guild.id)
+        if (
+            config.get("commands_disabled")
+            or config.get("maintenance_mode")
+            or not feature_is_enabled(config, "tickets")
+        ):
+            await interaction.response.send_message(
+                "Les tickets sont actuellement désactivés sur ce serveur.",
+                ephemeral=True,
+            )
+            return
         staff_role_id = config.get("staff_role_id")
         staff_role = guild.get_role(int(staff_role_id)) if staff_role_id else None
         if staff_role is None:
@@ -172,6 +182,9 @@ class TicketPanelView(discord.ui.View):
             "Ticket ouvert",
             f"Ticket : {ticket_channel.mention}\nMembre : {member.mention} (`{member.id}`)",
             color=discord.Color.green(),
+            category="tickets",
+            event_kind="ticket",
+            actor_id=member.id,
         )
         await interaction.followup.send(
             f"Votre ticket est ouvert : {ticket_channel.mention}",
@@ -297,6 +310,10 @@ class TicketCloseView(discord.ui.View):
             "Ticket fermé",
             f"Salon : {channel.mention}\nAuteur : <@{ticket_owner_id}>\nFermé par : {member.mention}",
             color=discord.Color.orange(),
+            category="tickets",
+            event_kind="ticket_closed",
+            actor_id=member.id,
+            target_id=ticket_owner_id,
         )
         await interaction.followup.send(
             "Ticket fermé. Son historique reste accessible au staff.",
@@ -337,6 +354,16 @@ class VerifyView(discord.ui.View):
             return
         bot = get_bot(interaction)
         config = await bot.config_store.get_guild(guild.id)
+        if (
+            config.get("commands_disabled")
+            or config.get("maintenance_mode")
+            or not feature_is_enabled(config, "verification")
+        ):
+            await interaction.response.send_message(
+                "La vérification est actuellement désactivée sur ce serveur.",
+                ephemeral=True,
+            )
+            return
         if int(config.get("verification_role_id", 0)) != self.role_id:
             await interaction.response.send_message(
                 "Ce panneau de vérification n'est plus actif. Utilisez le panneau le plus récent.",

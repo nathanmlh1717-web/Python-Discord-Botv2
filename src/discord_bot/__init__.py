@@ -39,9 +39,7 @@ class OwnerAwareCommandTree(app_commands.CommandTree):
         bot = self.client
         config = await bot.config_store.get_guild(guild.id)
         command = interaction.command
-        is_owner_command = command is not None and (
-            command.name == "owner" or command.name.startswith("owner-")
-        )
+        is_owner_command = command is not None and command.name == "owner"
         if is_owner_command:
             return True
         if config.get("commands_disabled"):
@@ -154,7 +152,8 @@ class SlashCommandBot(commands.Bot):
             await self.notify_owner(
                 "Erreur de commande",
                 interaction.guild,
-                f"/{command_name} · {type(error.original).__name__}: {str(error.original)[:300]}",
+                f"/{command_name} · exception {type(error.original).__name__} · "
+                f"utilisateur `{interaction.user.id}`",
             )
 
         try:
@@ -183,7 +182,7 @@ class SlashCommandBot(commands.Bot):
             event_kind="command",
             actor_id=interaction.user.id,
         )
-        if command_name.startswith("owner-") or command_name in {
+        if command_name == "owner" or command_name.startswith("owner-") or command_name in {
             "ban",
             "kick",
             "timeout",

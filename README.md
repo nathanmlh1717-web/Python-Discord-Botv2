@@ -25,10 +25,10 @@ Le bot n'active pas l'intent privilégié « Message Content ». Les messages en
 - **Informations** : `/userinfo`, `/serverinfo`, `/avatar`, `/botinfo`, `/ping`, `/help`
 - **Utilitaires** : `/say`, `/embed`, `/poll`, `/announce`, `/suggest`, `/report`
 - **Staff et configuration** : `/stafflist`, `/logsetup`, `/ticketsetup`, `/verifysetup`
-- **Propriétaire du bot** : `/owner-servers`, `/owner-serverinfo`, `/owner-send`, `/owner-config`, `/owner-leave`, `/owner-disable`, `/owner-enable`
+- **Propriétaire du bot** : `/owner` ouvre le centre de contrôle privé; les serveurs, salons, rôles et tickets se choisissent dans des menus Discord.
 
 Les commandes sensibles vérifient les permissions Discord et la hiérarchie des rôles. Les erreurs affichées par le bot sont en français.
 
-Toutes les commandes `/owner-*` vérifient côté serveur que l'identifiant de l'utilisateur est exactement celui de `OWNER_ID`; elles ne sont pas autorisées sur la seule base de leur visibilité ou des permissions de serveur. `/owner-config` ne modifie que les réglages allowlistés du bot. `/owner-disable` bloque les commandes ordinaires du bot sur le serveur, tandis que les commandes du propriétaire restent disponibles pour l'administration.
+`/owner` et toutes les interactions de son panneau vérifient côté serveur que l'identifiant de l'utilisateur est exactement celui de `OWNER_ID`; elles ne sont pas autorisées sur la seule base de leur visibilité ou des permissions de serveur. Le panneau permet de gérer les commandes, la modération, les tickets, les messages, la vérification, les logs, les statistiques et le contrôle par serveur. Les opérations sensibles vérifient les permissions effectives du bot.
 
-`/owner-config` permet de gérer les salons de logs, suggestions et bienvenue, la catégorie et le rôle staff des tickets ainsi que le rôle de vérification. Le réglage du salon de suggestions est utilisé par `/suggest`. Le bot actuel ne publie pas encore de message automatique à l'arrivée d'un membre.
+Le salon des suggestions est utilisé par `/suggest`. Le panneau permet de modifier et prévisualiser le message de bienvenue, mais l'envoi automatique reste désactivé.

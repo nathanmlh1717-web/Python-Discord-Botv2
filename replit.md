@@ -47,8 +47,9 @@ The bot provides French slash commands for moderation, server information, polls
 - Invite the bot with both the `bot` and `applications.commands` OAuth2 scopes.
 - Global slash-command changes may take time to appear in Discord after syncing.
 - Configure the log destination with `/logsetup`, the staff role with `/ticketsetup`, and the verification role with `/verifysetup`.
-- All `/owner-*` commands enforce an exact server-side `interaction.user.id == OWNER_ID` check. `/owner-config` only changes allowlisted bot feature settings; `/owner-disable` blocks normal commands while preserving the owner's control commands.
-- `/owner-config` supports a welcome-channel setting, but the bot does not yet send automatic new-member welcome messages.
+- `/owner` and every panel interaction enforce an exact server-side `interaction.user.id == OWNER_ID` check. Guilds, channels, and roles are selected from Discord menus; the owner panel does not request numeric IDs.
+- The owner dashboard controls feature and command toggles, moderation, tickets, messages, verification, log categories, per-guild activity, maintenance, reset, and double-confirmed leave. All sends and moderation actions check the bot's effective Discord permissions.
+- Welcome text and preview are configurable in the panel, but automatic welcome messages remain disabled.
 - Warning records and guild settings are stored in local JSON files under `data/`.
 
 ## Pointers

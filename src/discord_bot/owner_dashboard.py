@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 
@@ -14,6 +15,7 @@ from discord_bot.common import (
     parse_timeout_duration,
     verification_role_error,
 )
+from discord_bot.owner_panel_common import OwnerOnlyView, audit_owner_action, require_owner
 from discord_bot.views import (
     OWNER_RE,
     STATUS_RE,
@@ -50,44 +52,6 @@ LOG_CATEGORIES = {
     "commands": "Utilisation des commandes",
     "welcome": "Bienvenue",
 }
-TEXT_CHANNEL_TYPES = [discord.ChannelType.text, discord.ChannelType.news]
-
-
-async def require_owner(
-    interaction: discord.Interaction,
-    bot: SlashCommandBot,
-) -> bool:
-    """Recheck the configured owner ID for every panel or modal interaction."""
-    if interaction.user.id == bot.owner_id:
-        return True
-    message = "Ce panneau est réservé au propriétaire du bot."
-    if interaction.response.is_done():
-        await interaction.followup.send(message, ephemeral=True)
-    else:
-        await interaction.response.send_message(message, ephemeral=True)
-    return False
-
-
-async def audit_owner_action(
-    bot: SlashCommandBot,
-    guild: discord.Guild,
-    action: str,
-    detail: str,
-) -> None:
-    await bot.activity_store.record_event(
-        guild.id,
-        "owner",
-        action,
-        actor_id=bot.owner_id,
-        detail=detail,
-    )
-    await bot.notify_owner(
-        "Action du centre OWNER",
-        guild,
-        f"Action : **{action}**\n{detail}",
-    )
-
-
 def _permission_lines(guild: discord.Guild) -> str:
     bot_member = guild.me
     if bot_member is None:
@@ -109,16 +73,6 @@ def _permission_lines(guild: discord.Guild) -> str:
         f"{'✅' if granted else '—'} {label}"
         for label, granted in checks
     )
-
-
-class OwnerOnlyView(discord.ui.View):
-    def __init__(self, bot: SlashCommandBot, *, timeout: float = 600) -> None:
-        super().__init__(timeout=timeout)
-        self.bot = bot
-        self.owner_id = bot.owner_id
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return await require_owner(interaction, self.bot)
 
 
 class GuildPickerSelect(discord.ui.Select):
@@ -300,7 +254,58 @@ class DashboardCommandSelect(discord.ui.Select):
             await self.panel.toggle_command(interaction, value)
 
 
-class PanelChannelSelect(discord.ui.ChannelSelect):
+class PagedGuildSelect(discord.ui.Select):
+    def __init__(
+        self,
+        panel: OwnerDashboardView,
+        purpose: str,
+        placeholder: str,
+        entries: list[tuple[str, str, str]],
+    ) -> None:
+        self.panel = panel
+        self.purpose = purpose
+        self.page_size = 22
+        self.page_count = max(1, (len(entries) + self.page_size - 1) // self.page_size)
+        self.page = panel.page % self.page_count
+        page_entries = entries[self.page * self.page_size : (self.page + 1) * self.page_size]
+        options = [
+            discord.SelectOption(label=label[:100], value=value, description=description[:100] or None)
+            for label, value, description in page_entries
+        ]
+        if self.page > 0:
+            options.append(discord.SelectOption(label="Page précédente", value="__previous__"))
+        if self.page + 1 < self.page_count:
+            options.append(discord.SelectOption(label="Page suivante", value="__next__"))
+        disabled = not entries
+        if disabled:
+            options = [discord.SelectOption(label="Aucun élément accessible au bot", value="__empty__")]
+        super().__init__(
+            placeholder=placeholder,
+            min_values=1,
+            max_values=1,
+            options=options[:25],
+            disabled=disabled,
+            row=4,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if not await require_owner(interaction, self.panel.bot):
+            return
+        value = self.values[0]
+        if value == "__next__":
+            await self.panel.change_resource_page(interaction, self.purpose, self.page + 1)
+        elif value == "__previous__":
+            await self.panel.change_resource_page(interaction, self.purpose, max(0, self.page - 1))
+        elif value == "__lookup__":
+            await self.panel.open_member_lookup(interaction)
+        elif value != "__empty__":
+            await self.select_resource(interaction, int(value))
+
+    async def select_resource(self, interaction: discord.Interaction, resource_id: int) -> None:
+        raise NotImplementedError
+
+
+class PanelChannelSelect(PagedGuildSelect):
     def __init__(
         self,
         panel: OwnerDashboardView,
@@ -308,84 +313,172 @@ class PanelChannelSelect(discord.ui.ChannelSelect):
         placeholder: str = "Choisir un salon…",
         channel_types: list[discord.ChannelType] | None = None,
     ) -> None:
-        super().__init__(
-            placeholder=placeholder,
-            min_values=1,
-            max_values=1,
-            channel_types=channel_types or TEXT_CHANNEL_TYPES,
-            row=4,
-        )
-        self.panel = panel
-        self.purpose = purpose
+        guild = panel.guild()
+        bot_member = guild.me if guild else None
+        entries: list[tuple[str, str, str]] = [
+            ("Rechercher par mention ou ID", "__lookup__", "Pour les membres non présents dans le cache")
+        ]
+        if guild is not None and bot_member is not None:
+            if channel_types == [discord.ChannelType.category]:
+                channels: list[discord.abc.GuildChannel] = [
+                    category
+                    for category in guild.categories
+                    if category.permissions_for(bot_member).view_channel
+                    and bot_member.guild_permissions.manage_channels
+                ]
+            else:
+                channels = [
+                    channel
+                    for channel in guild.text_channels
+                    if channel.permissions_for(bot_member).view_channel
+                    and channel.permissions_for(bot_member).send_messages
+                    and channel.permissions_for(bot_member).embed_links
+                    and (
+                        purpose != "suggestion_channel"
+                        or channel.permissions_for(bot_member).add_reactions
+                    )
+                ]
+            entries = [
+                (f"#{channel.name}", str(channel.id), f"Salon accessible · {channel.category.name if channel.category else 'sans catégorie'}")
+                for channel in channels
+            ]
+        super().__init__(panel, purpose, placeholder, entries)
 
-    async def callback(self, interaction: discord.Interaction) -> None:
-        if not await require_owner(interaction, self.panel.bot):
+    async def select_resource(self, interaction: discord.Interaction, resource_id: int) -> None:
+        guild = self.panel.guild()
+        channel = guild.get_channel(resource_id) if guild else None
+        if channel is None:
+            await interaction.response.send_message("Ce salon n'est plus accessible.", ephemeral=True)
             return
-        await self.panel.handle_channel(interaction, self.purpose, self.values[0])
+        await self.panel.handle_channel(interaction, self.purpose, channel)
 
 
-class PanelRoleSelect(discord.ui.RoleSelect):
+class PanelRoleSelect(PagedGuildSelect):
     def __init__(self, panel: OwnerDashboardView, purpose: str, placeholder: str) -> None:
-        super().__init__(
-            placeholder=placeholder,
-            min_values=1,
-            max_values=1,
-            row=4,
-        )
-        self.panel = panel
-        self.purpose = purpose
+        guild = panel.guild()
+        bot_member = guild.me if guild else None
+        entries: list[tuple[str, str, str]] = []
+        if guild is not None and bot_member is not None:
+            roles = [
+                role
+                for role in guild.roles
+                if not role.is_default()
+                and not role.managed
+                and role < bot_member.top_role
+                and (
+                    purpose != "verification_role"
+                    or verification_role_error(role, bot_member) is None
+                )
+            ]
+            entries = [
+                (f"@{role.name}", str(role.id), "Rôle attribuable par le bot")
+                for role in roles
+            ]
+        super().__init__(panel, purpose, placeholder, entries)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if not await require_owner(interaction, self.panel.bot):
             return
-        await self.panel.handle_role(interaction, self.purpose, self.values[0])
+        await super().callback(interaction)
+
+    async def select_resource(self, interaction: discord.Interaction, resource_id: int) -> None:
+        guild = self.panel.guild()
+        role = guild.get_role(resource_id) if guild else None
+        if role is None:
+            await interaction.response.send_message("Ce rôle n'est plus accessible.", ephemeral=True)
+            return
+        await self.panel.handle_role(interaction, self.purpose, role)
 
 
-class PanelUserSelect(discord.ui.UserSelect):
+class PanelUserSelect(PagedGuildSelect):
     def __init__(self, panel: OwnerDashboardView) -> None:
+        guild = panel.guild()
+        bot_member = guild.me if guild else None
+        entries: list[tuple[str, str, str]] = []
+        if guild is not None and bot_member is not None:
+            members = [
+                member
+                for member in guild.members
+                if not member.bot
+                and member.id != guild.owner_id
+                and member.top_role < bot_member.top_role
+            ]
+            entries = [
+                (member.display_name, str(member.id), f"@{member.name} · membre présent dans le cache")
+                for member in members
+            ]
+        self.available_count = len(entries)
         super().__init__(
-            placeholder="Choisir un membre du serveur…",
-            min_values=1,
-            max_values=1,
-            row=4,
+            panel,
+            "member_select",
+            "Choisir un membre en cache…",
+            entries,
         )
-        self.panel = panel
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if not await require_owner(interaction, self.panel.bot):
             return
-        selected = self.values[0]
+        await super().callback(interaction)
+
+    async def select_resource(self, interaction: discord.Interaction, member_id: int) -> None:
+        guild = self.panel.guild()
+        member = guild.get_member(member_id) if guild else None
+        if guild is not None and member is None:
+            try:
+                member = await guild.fetch_member(member_id)
+            except discord.HTTPException:
+                member = None
+        if guild is None or member is None:
+            await interaction.response.send_message(
+                "Ce membre n'est plus accessible dans ce serveur.",
+                ephemeral=True,
+            )
+            return
         view = OwnerDashboardView(
             self.panel.bot,
             self.panel.guild_id,
             "moderation",
-            target_member_id=selected.id,
+            target_member_id=member.id,
         )
         await interaction.response.edit_message(embed=await view.render(), view=view)
 
 
 class TicketSelect(discord.ui.Select):
     def __init__(self, panel: OwnerDashboardView, channels: list[discord.TextChannel]) -> None:
+        self.panel = panel
+        page_size = 22
+        self.page_count = max(1, (len(channels) + page_size - 1) // page_size)
+        self.page = panel.page % self.page_count
+        page_channels = channels[self.page * page_size : (self.page + 1) * page_size]
         options = [
             discord.SelectOption(
                 label=channel.name[:100],
                 value=str(channel.id),
-                description=(channel.topic or "Ticket ouvert")[:100],
+                description="Ticket ouvert",
             )
-            for channel in channels[:25]
+            for channel in page_channels
         ]
+        if self.page > 0:
+            options.append(discord.SelectOption(label="Page précédente", value="__previous__"))
+        if self.page + 1 < self.page_count:
+            options.append(discord.SelectOption(label="Page suivante", value="__next__"))
         super().__init__(
-            placeholder="Choisir un ticket ouvert…",
+            placeholder=f"Choisir un ticket ouvert · {self.page + 1}/{self.page_count}",
             min_values=1,
             max_values=1,
             options=options or [discord.SelectOption(label="Aucun ticket ouvert", value="0")],
             disabled=not channels,
             row=4,
         )
-        self.panel = panel
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if not await require_owner(interaction, self.panel.bot):
+            return
+        if self.values[0] == "__next__":
+            await self.panel.change_resource_page(interaction, "ticket_list", self.page + 1)
+            return
+        if self.values[0] == "__previous__":
+            await self.panel.change_resource_page(interaction, "ticket_list", max(0, self.page - 1))
             return
         if self.values[0] == "0":
             return
@@ -455,6 +548,13 @@ class OwnerDashboardView(OwnerOnlyView):
                 )
                 for key, label in FEATURE_LABELS.items()
             ]
+            options.append(
+                discord.SelectOption(
+                    label="Choisir le salon des suggestions",
+                    value="suggestions:channel",
+                    description="Les suggestions utiliseront ce salon.",
+                )
+            )
             placeholder = "Activer ou désactiver une fonctionnalité…"
         elif self.section == "commands":
             self.add_item(DashboardCommandSelect(self))
@@ -500,6 +600,7 @@ class OwnerDashboardView(OwnerOnlyView):
                 discord.SelectOption(label="Choisir le salon", value="welcome:channel"),
                 discord.SelectOption(label="Modifier le message", value="welcome:message"),
                 discord.SelectOption(label="Prévisualiser", value="welcome:preview"),
+                discord.SelectOption(label="Demander l'activation automatique", value="welcome:toggle"),
             ]
             placeholder = "Réglages de bienvenue…"
         elif self.section == "verification":
@@ -535,7 +636,9 @@ class OwnerDashboardView(OwnerOnlyView):
 
     def _add_input_control(self) -> None:
         mode = self.input_mode
-        if mode == "ticket_staff":
+        if mode == "member_select":
+            self.add_item(PanelUserSelect(self))
+        elif mode == "ticket_staff":
             self.add_item(PanelRoleSelect(self, mode, "Choisir le rôle staff…"))
         elif mode == "verification_role":
             self.add_item(PanelRoleSelect(self, mode, "Choisir le rôle de vérification…"))
@@ -560,6 +663,7 @@ class OwnerDashboardView(OwnerOnlyView):
                 "verify_channel": "Choisir le salon du panneau…",
                 "verify_publish": "Choisir le salon du panneau…",
                 "log_channel": "Choisir le salon de logs…",
+                "suggestion_channel": "Choisir le salon de suggestions…",
             }
             self.add_item(PanelChannelSelect(self, mode, labels.get(mode, "Choisir un salon…")))
 
@@ -588,9 +692,15 @@ class OwnerDashboardView(OwnerOnlyView):
             timestamp=discord.utils.utcnow(),
         )
         if self.section == "home":
+            owner = guild.owner
+            if owner is None:
+                try:
+                    owner = await self.bot.fetch_user(guild.owner_id)
+                except discord.HTTPException:
+                    owner = None
             embed.description = (
                 f"**Membres :** {guild.member_count if guild.member_count is not None else 'inconnu'}\n"
-                f"**Propriétaire :** {str(guild.owner) if guild.owner else f'ID {guild.owner_id}'}\n"
+                f"**Propriétaire :** {str(owner) if owner else f'ID {guild.owner_id}'}\n"
                 f"**État du bot :** {state}\n"
                 f"**ID :** `{guild.id}`\n\n"
                 f"**Permissions du bot**\n{_permission_lines(guild)}"
@@ -604,15 +714,25 @@ class OwnerDashboardView(OwnerOnlyView):
             embed.set_footer(text="Choisissez une fonctionnalité dans le menu pour la basculer.")
         elif self.section == "commands":
             disabled = config.get("disabled_commands", [])
-            disabled = disabled if isinstance(disabled, list) else []
-            enabled_count = sum(
-                command.name != "owner" and not command.name.startswith("owner-")
+            disabled = set(disabled) if isinstance(disabled, list) else set()
+            commands = [
+                command
                 for command in self.bot.tree.get_commands()
-            ) - len(disabled)
+                if command.name != "owner" and not command.name.startswith("owner-")
+            ]
+            enabled_commands = [
+                command.name
+                for command in commands
+                if command.name not in disabled
+                and (
+                    COMMAND_FEATURES.get(command.name) is None
+                    or feature_is_enabled(config, COMMAND_FEATURES[command.name])
+                )
+            ]
             embed.description = (
-                f"Commandes activées : **{max(0, enabled_count)}**\n"
-                f"Commandes désactivées : **{len(disabled)}**\n\n"
-                "Choisissez une commande dans le menu pour changer son état. "
+                f"Commandes activées : **{len(enabled_commands)} / {len(commands)}**\n\n"
+                + ", ".join(f"`/{name}`" for name in enabled_commands)
+                + "\n\nChoisissez une commande dans le menu pour changer son état. "
                 "Les commandes OWNER ne sont pas modifiables ici."
             )
             embed.set_footer(text="Les commandes désactivées restent visibles dans Discord mais sont refusées par le bot.")
@@ -621,7 +741,9 @@ class OwnerDashboardView(OwnerOnlyView):
             if target is None:
                 embed.description = (
                     "Sélectionnez un membre dans le menu. Les actions disponibles dépendront "
-                    "des permissions et de la hiérarchie du bot sur ce serveur."
+                    "des permissions et de la hiérarchie du bot sur ce serveur. "
+                    "La liste utilise les membres en cache; choisissez « Rechercher par mention ou ID » "
+                    "pour les autres."
                 )
             else:
                 embed.description = (
@@ -645,6 +767,26 @@ class OwnerDashboardView(OwnerOnlyView):
                     )
                 else:
                     embed.add_field(name="Avertissements enregistrés", value="Aucun", inline=False)
+                activity = await self.bot.activity_store.get_guild(guild.id)
+                sanctions = [
+                    event
+                    for event in activity.get("events", [])
+                    if event.get("kind") == "moderation"
+                    and int(event.get("target_id", 0)) == target.id
+                ][-5:]
+                if sanctions:
+                    lines = [
+                        f"• **{str(event.get('action', 'Sanction'))[:100]}** · "
+                        f"{str(event.get('created_at', ''))[:10]}"
+                        for event in reversed(sanctions)
+                    ]
+                    embed.add_field(
+                        name="Sanctions récentes enregistrées",
+                        value="\n".join(lines),
+                        inline=False,
+                    )
+                else:
+                    embed.add_field(name="Sanctions récentes enregistrées", value="Aucune", inline=False)
         elif self.section == "tickets":
             tickets = self._open_tickets(guild)
             staff_role = guild.get_role(int(config["staff_role_id"])) if config.get("staff_role_id") else None
@@ -763,6 +905,26 @@ class OwnerDashboardView(OwnerOnlyView):
         )
         await interaction.response.edit_message(embed=await view.render(), view=view)
 
+    async def change_resource_page(
+        self,
+        interaction: discord.Interaction,
+        mode: str,
+        page: int,
+    ) -> None:
+        view = OwnerDashboardView(
+            self.bot,
+            self.guild_id,
+            self.section,
+            target_member_id=self.target_member_id,
+            selected_ticket_id=self.selected_ticket_id,
+            page=page,
+            input_mode=mode,
+        )
+        await interaction.response.edit_message(embed=await view.render(), view=view)
+
+    async def open_member_lookup(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(MemberLookupModal(self.bot, self.guild_id))
+
     async def handle_action(self, interaction: discord.Interaction, action: str) -> None:
         guild = self.guild()
         if guild is None:
@@ -770,6 +932,9 @@ class OwnerDashboardView(OwnerOnlyView):
             return
         if action.startswith("feature:"):
             await self._toggle_feature(interaction, guild, action.split(":", 1)[1])
+        elif action == "suggestions:channel":
+            view = OwnerDashboardView(self.bot, guild.id, "features", input_mode="suggestion_channel")
+            await interaction.response.edit_message(embed=await view.render(), view=view)
         elif action.startswith("moderation:"):
             await self._moderation_action(interaction, guild, action.split(":", 1)[1])
         elif action.startswith("ticket:"):
@@ -882,10 +1047,22 @@ class OwnerDashboardView(OwnerOnlyView):
         if purpose == "verify_publish":
             await self._publish_verification_panel(interaction, guild, channel)
             return
-        needs_embed = purpose in {"log_channel", "message_channel", "welcome_channel", "verify_channel"}
+        needs_embed = purpose in {
+            "log_channel",
+            "message_channel",
+            "welcome_channel",
+            "verify_channel",
+            "suggestion_channel",
+        }
         if needs_embed and (not permissions.send_messages or not permissions.embed_links):
             await interaction.response.send_message(
                 "Le bot doit pouvoir envoyer des messages et des embeds dans ce salon.",
+                ephemeral=True,
+            )
+            return
+        if purpose == "suggestion_channel" and not permissions.add_reactions:
+            await interaction.response.send_message(
+                "Le bot doit pouvoir ajouter des réactions dans le salon de suggestions.",
                 ephemeral=True,
             )
             return
@@ -894,6 +1071,7 @@ class OwnerDashboardView(OwnerOnlyView):
             "message_channel": "owner_message_channel_id",
             "welcome_channel": "welcome_channel_id",
             "verify_channel": "verification_channel_id",
+            "suggestion_channel": "suggestion_channel_id",
         }
         config_key = key_by_purpose.get(purpose)
         if config_key is None:
@@ -1045,8 +1223,6 @@ class OwnerDashboardView(OwnerOnlyView):
         for channel in guild.text_channels:
             if not channel.permissions_for(bot_member).view_channel:
                 continue
-            if OWNER_RE.search(channel.topic or "") and (STATUS_RE.search(channel.topic or "") is None):
-                continue
             owner_match = OWNER_RE.search(channel.topic or "")
             status_match = STATUS_RE.search(channel.topic or "")
             if owner_match and status_match and status_match.group(1) == "open":
@@ -1176,6 +1352,12 @@ class OwnerDashboardView(OwnerOnlyView):
                 text=f"Salon : #{channel.name}" if isinstance(channel, discord.TextChannel) else "Aucun salon choisi"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
+        elif action == "toggle":
+            await interaction.response.send_message(
+                "L'accueil automatique reste désactivé, comme demandé. "
+                "Le réglage du salon et l'aperçu restent disponibles.",
+                ephemeral=True,
+            )
 
     async def _verify_action(
         self,
@@ -1270,7 +1452,7 @@ class OwnerDashboardView(OwnerOnlyView):
                 except ValueError:
                     when = "date inconnue"
                 actor_id = event.get("actor_id")
-                actor = f" · <@{actor_id}>" if actor_id else ""
+                actor = f" · utilisateur `{actor_id}`" if actor_id else ""
                 lines.append(
                     f"• **{str(event.get('action', 'Action'))[:100]}**{actor} · {when}"
                 )
@@ -1423,6 +1605,63 @@ async def _execute_moderation(
     )
     await audit_owner_action(bot, guild, title, f"Membre : {member} (`{member.id}`)\nRaison : {reason}")
     return message
+
+
+class MemberLookupModal(discord.ui.Modal):
+    def __init__(self, bot: SlashCommandBot, guild_id: int) -> None:
+        super().__init__(title="Rechercher un membre")
+        self.bot = bot
+        self.guild_id = guild_id
+        self.member_reference = discord.ui.TextInput(
+            label="Mention ou identifiant du membre",
+            placeholder="@membre ou identifiant Discord",
+            max_length=32,
+        )
+        self.add_item(self.member_reference)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        if not await require_owner(interaction, self.bot):
+            return
+        guild = self.bot.get_guild(self.guild_id)
+        if guild is None:
+            await interaction.response.send_message("Le serveur n'est plus accessible.", ephemeral=True)
+            return
+        raw_value = str(self.member_reference.value).strip()
+        match = re.fullmatch(r"<@!?(\d{1,20})>", raw_value)
+        member_id = int(match.group(1)) if match else int(raw_value) if raw_value.isdecimal() else 0
+        if member_id <= 0:
+            await interaction.response.send_message(
+                "Indiquez une mention Discord ou un identifiant de membre valide.",
+                ephemeral=True,
+            )
+            return
+        member = guild.get_member(member_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(member_id)
+            except discord.NotFound:
+                member = None
+            except discord.HTTPException:
+                await interaction.response.send_message(
+                    "Discord n'a pas pu retrouver ce membre dans le serveur.",
+                    ephemeral=True,
+                )
+                return
+        if member is None:
+            await interaction.response.send_message("Ce membre n'appartient pas à ce serveur.", ephemeral=True)
+            return
+        view = OwnerDashboardView(
+            self.bot,
+            guild.id,
+            "moderation",
+            target_member_id=member.id,
+        )
+        await interaction.response.send_message(
+            "Membre sélectionné. Retournez au panneau pour continuer.",
+            embed=await view.render(),
+            view=view,
+            ephemeral=True,
+        )
 
 
 class OwnerMessageModal(discord.ui.Modal):

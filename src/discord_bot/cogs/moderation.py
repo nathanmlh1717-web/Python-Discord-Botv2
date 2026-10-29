@@ -53,6 +53,8 @@ class ModerationCog(commands.Cog):
             "Membre banni",
             f"Membre : {format_member(member)}\nModérateur : {interaction.user.mention}\nRaison : {reason}",
             color=discord.Color.red(),
+            actor_id=interaction.user.id,
+            target_id=member.id,
         )
         await interaction.followup.send(
             f"{member.mention} a été banni. Raison : {reason}",
@@ -91,6 +93,8 @@ class ModerationCog(commands.Cog):
             "Membre expulsé",
             f"Membre : {format_member(member)}\nModérateur : {interaction.user.mention}\nRaison : {reason}",
             color=discord.Color.red(),
+            actor_id=interaction.user.id,
+            target_id=member.id,
         )
         await interaction.followup.send(
             f"{member.mention} a été expulsé. Raison : {reason}",
@@ -143,6 +147,8 @@ class ModerationCog(commands.Cog):
             f"Membre : {format_member(member)}\nModérateur : {interaction.user.mention}\n"
             f"Durée : {duration}\nFin : {expiration}\nRaison : {reason}",
             color=discord.Color.orange(),
+            actor_id=interaction.user.id,
+            target_id=member.id,
         )
         await interaction.followup.send(
             f"{member.mention} est en timeout pour {duration} (jusqu'à {expiration}).",
@@ -181,6 +187,8 @@ class ModerationCog(commands.Cog):
             "Timeout retiré",
             f"Membre : {format_member(member)}\nModérateur : {interaction.user.mention}\nRaison : {reason}",
             color=discord.Color.green(),
+            actor_id=interaction.user.id,
+            target_id=member.id,
         )
         await interaction.followup.send(
             f"Le timeout de {member.mention} a été retiré.",
@@ -224,6 +232,8 @@ class ModerationCog(commands.Cog):
             f"Membre : {format_member(member)}\nModérateur : {interaction.user.mention}\n"
             f"Total : {warning_count}\nRaison : {reason}",
             color=discord.Color.orange(),
+            actor_id=interaction.user.id,
+            target_id=member.id,
         )
         await interaction.followup.send(
             f"{member.mention} a reçu un avertissement (total : {warning_count}). Raison : {reason}",
@@ -303,6 +313,7 @@ class ModerationCog(commands.Cog):
                 f"Modérateur : {interaction.user.mention}\nSalon : {channel.mention}\n"
                 f"Nombre supprimé : **{len(deleted)}**",
                 color=discord.Color.orange(),
+                actor_id=interaction.user.id,
             )
         await interaction.followup.send(
             f"**{len(deleted)}** message(s) supprimé(s).",
@@ -330,6 +341,14 @@ class ModerationCog(commands.Cog):
             slowmode_delay=seconds,
             reason=f"Mode lent modifié par {interaction.user} ({interaction.user.id})",
         )
+        if interaction.guild is not None:
+            await log_action(
+                self.bot,
+                interaction.guild,
+                "Mode lent modifié",
+                f"Salon : {channel.mention}\nDélai : {seconds} seconde(s)\nPar : {interaction.user} (`{interaction.user.id}`)",
+                actor_id=interaction.user.id,
+            )
         value = "désactivé" if seconds == 0 else f"réglé sur **{seconds} seconde(s)**"
         await interaction.followup.send(f"Le mode lent est {value}.", ephemeral=True)
 
@@ -350,6 +369,13 @@ class ModerationCog(commands.Cog):
             guild.default_role,
             send_messages=False,
             reason=f"Salon verrouillé par {interaction.user} ({interaction.user.id})",
+        )
+        await log_action(
+            self.bot,
+            guild,
+            "Salon verrouillé",
+            f"Salon : {channel.mention}\nPar : {interaction.user} (`{interaction.user.id}`)",
+            actor_id=interaction.user.id,
         )
         await interaction.followup.send(
             f"🔒 {channel.mention} est verrouillé pour @everyone.",
@@ -374,6 +400,14 @@ class ModerationCog(commands.Cog):
             guild.default_role,
             send_messages=None,
             reason=f"Salon déverrouillé par {interaction.user} ({interaction.user.id})",
+        )
+        await log_action(
+            self.bot,
+            guild,
+            "Salon déverrouillé",
+            f"Salon : {channel.mention}\nPar : {interaction.user} (`{interaction.user.id}`)",
+            color=discord.Color.green(),
+            actor_id=interaction.user.id,
         )
         await interaction.followup.send(
             f"🔓 {channel.mention} est déverrouillé.",
