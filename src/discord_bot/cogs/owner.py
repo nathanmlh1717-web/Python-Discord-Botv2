@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -10,6 +12,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from discord_bot import SlashCommandBot
+
+
+LOGGER = logging.getLogger("discord_bot.owner")
 
 
 class OwnerCog(commands.Cog):
@@ -24,10 +29,18 @@ class OwnerCog(commands.Cog):
     )
     @owner_only()
     async def owner(self, interaction: discord.Interaction) -> None:
-        guilds = sorted(self.bot.guilds, key=lambda guild: guild.name.casefold())
+        await self.bot.wait_until_ready()
+        guilds = list(self.bot.guilds)
+        LOGGER.info(
+            "Diagnostic temporaire /owner — bot.guilds : %d serveur(s) : %s",
+            len(guilds),
+            ", ".join(guild.name for guild in guilds) or "(aucun)",
+        )
+        guilds.sort(key=lambda guild: guild.name.casefold())
         if not guilds:
             await interaction.response.send_message(
-                "Le bot n'est présent sur aucun serveur.",
+                "Cette session Discord ne fournit aucun serveur à bot.guilds. "
+                "Vérifiez que le bot de cette session est bien installé dans le serveur.",
                 ephemeral=True,
             )
             return

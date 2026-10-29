@@ -60,9 +60,11 @@ class SlashCommandBot(commands.Bot):
     """Bot that loads its features and restores persistent component views."""
 
     def __init__(self, owner_id: int) -> None:
+        intents = discord.Intents.default()
+        intents.guilds = True
         super().__init__(
             command_prefix=commands.when_mentioned,
-            intents=discord.Intents.default(),
+            intents=intents,
             tree_cls=OwnerAwareCommandTree,
         )
         self.owner_id = owner_id
@@ -70,6 +72,7 @@ class SlashCommandBot(commands.Bot):
         self.warning_store = WarningStore()
         self.activity_store = ActivityStore()
         self.started_at = datetime.now(UTC)
+        self._guild_diagnostic_reported = False
 
     async def setup_hook(self) -> None:
         await self.config_store.load()
@@ -101,6 +104,20 @@ class SlashCommandBot(commands.Bot):
 
         synced_commands = await self.tree.sync()
         LOGGER.info("Commandes slash synchronisées : %d.", len(synced_commands))
+
+    async def on_ready(self) -> None:
+        if self._guild_diagnostic_reported:
+            return
+        self._guild_diagnostic_reported = True
+        guilds = sorted(self.guilds, key=lambda guild: guild.name.casefold())
+        LOGGER.info(
+            "Diagnostic temporaire après ready — bot=%s, intent_guilds=%s, "
+            "bot.guilds=%d serveur(s) : %s",
+            self.user,
+            self.intents.guilds,
+            len(guilds),
+            ", ".join(guild.name for guild in guilds) or "(aucun)",
+        )
 
     async def on_app_command_error(
         self,

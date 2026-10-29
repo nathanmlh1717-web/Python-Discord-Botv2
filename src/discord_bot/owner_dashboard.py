@@ -129,7 +129,8 @@ class ServerPickerView(OwnerOnlyView):
         page: int = 0,
     ) -> None:
         super().__init__(bot)
-        self.guilds = sorted(guilds or bot.guilds, key=lambda guild: guild.name.casefold())
+        source_guilds = guilds if guilds is not None else list(bot.guilds)
+        self.guilds = sorted(source_guilds, key=lambda guild: guild.name.casefold())
         self.page = page
         self.page_count = max(1, (len(self.guilds) + 24) // 25)
         start = page * 25
@@ -881,7 +882,16 @@ class OwnerDashboardView(OwnerOnlyView):
         page: int = 0,
     ) -> None:
         if section == "picker":
-            view = ServerPickerView(self.bot)
+            await self.bot.wait_until_ready()
+            guilds = sorted(self.bot.guilds, key=lambda guild: guild.name.casefold())
+            if not guilds:
+                await interaction.response.edit_message(
+                    content="Le bot n'est plus présent sur aucun serveur.",
+                    embed=None,
+                    view=None,
+                )
+                return
+            view = ServerPickerView(self.bot, guilds)
             await interaction.response.edit_message(embed=view.embed(), view=view)
             return
         if section == "close":
